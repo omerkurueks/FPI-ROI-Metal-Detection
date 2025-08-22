@@ -1,0 +1,3 @@
+# Bu dosya models klasörünün Git'te takip edilmesi için eklendi.
+# Model dosyalarını (.pt, .pth) buraya ekleyebilirsiniz.
+# Not: Büyük model dosyaları .gitignore'da hariç tutulmuştur.
