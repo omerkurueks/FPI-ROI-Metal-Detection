@@ -1,0 +1,24 @@
+﻿# FPI ROI Metal Detection System - Gereksinimler
+
+# Core ML Libraries
+torch>=2.0.0
+torchvision>=0.15.0
+ultralytics>=8.0.0
+supervision>=0.20.0
+
+# Image Processing
+Pillow>=9.0.0
+opencv-python>=4.5.0
+numpy>=1.21.0
+
+# Utilities
+huggingface-hub>=0.15.0
+tqdm>=4.60.0
+
+# Development (Optional)
+jupyter>=1.0.0
+matplotlib>=3.5.0
+
+# YOLOE Dependencies
+git+https://github.com/THU-MIG/yoloe.git#subdirectory=third_party/ml-mobileclip
+git+https://github.com/THU-MIG/yoloe.git
