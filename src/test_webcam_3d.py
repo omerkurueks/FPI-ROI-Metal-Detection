@@ -1,0 +1,295 @@
+import cv2
+import numpy as np
+from PIL import Image, ImageDraw
+import supervision as sv
+from ultralytics import YOLOE
+import torch
+from datetime import datetime
+import os
+
+# 3D detection imports
+from depth_model import DepthEstimator
+from bbox3d_utils import BBox3DEstimator
+
+# Sabit ROI koordinatları (webcam için ayarlanmış)
+FIXED_ROI = [100, 100, 500, 400]  # [x1, y1, x2, y2] - webcam için daha küçük
+NAMES = [
+    "metal bar", "steel bar", "iron bar", "rectangular prism", "metal block",
+    "steel beam", "iron beam", "metal piece", "industrial part", "steel product",
+    "hand", "pen", "pencil", "notebook", "book", "cup", "mug", "glass", 
+    "bottle", "water bottle", "beverage bottle"
+]
+
+class ROI3DDetectorWebcam:
+    def __init__(self, webcam_id=0, roi_coords=FIXED_ROI):
+        """
+        Webcam ile ROI tabanlı 3D nesne tespit sistemi
+        
+        Args:
+            webcam_id (int): Webcam ID (genellikle 0)
+            roi_coords (list): ROI koordinatları [x1, y1, x2, y2]
+        """
+        self.webcam_id = webcam_id
+        self.roi_coords = roi_coords
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        
+        # YOLOE model initialization
+        print(f"🤖 YOLOE modeli yükleniyor... (Device: {self.device})")
+        self.yolo_model = YOLOE("yoloe-v8l-seg.pt")
+        if self.device == "cuda":
+            self.yolo_model = self.yolo_model.cuda()
+        self.yolo_model.set_classes(NAMES, self.yolo_model.get_text_pe(NAMES))
+        
+        # Depth estimator initialization
+        print("🔍 Depth estimator yükleniyor...")
+        self.depth_estimator = DepthEstimator(model_size='small', device=self.device)
+        
+        # 3D bbox estimator initialization
+        print("📦 3D bbox estimator yükleniyor...")
+        self.bbox_3d_estimator = BBox3DEstimator()
+        
+        print("✅ Tüm modeller başarıyla yüklendi!")
+
+    def filter_detections_by_roi(self, detections, roi_bbox):
+        """ROI içerisindeki tespitleri filtrele"""
+        x1_roi, y1_roi, x2_roi, y2_roi = roi_bbox
+        filtered_indices = []
+        
+        for i, bbox in enumerate(detections.xyxy):
+            x1, y1, x2, y2 = bbox
+            center_x = (x1 + x2) / 2
+            center_y = (y1 + y2) / 2
+            
+            if x1_roi <= center_x <= x2_roi and y1_roi <= center_y <= y2_roi:
+                filtered_indices.append(i)
+        
+        if filtered_indices:
+            return detections[filtered_indices]
+        else:
+            return sv.Detections.empty()
+
+    def create_3d_bboxes(self, detections_2d, depth_map):
+        """2D tespitlerden 3D bounding box'lar oluştur"""
+        bboxes_3d = []
+        
+        for i, bbox_2d in enumerate(detections_2d.xyxy):
+            x1, y1, x2, y2 = map(int, bbox_2d)
+            
+            # Bbox merkezindeki derinlik değerini al
+            center_x = int((x1 + x2) / 2)
+            center_y = int((y1 + y2) / 2)
+            
+            # Depth map'ten derinlik değerini oku
+            if 0 <= center_y < depth_map.shape[0] and 0 <= center_x < depth_map.shape[1]:
+                depth = depth_map[center_y, center_x]
+                
+                try:
+                    # 3D bbox tahmin et
+                    bbox_3d_data = self.bbox_3d_estimator.estimate_3d_box(
+                        bbox_2d=[x1, y1, x2, y2],
+                        depth_value=float(depth),
+                        class_name='object',
+                        object_id=i
+                    )
+                    
+                    # Basit 3D data yapısı oluştur
+                    bbox_3d = {
+                        'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2,
+                        'depth': float(depth),
+                        'center_3d': bbox_3d_data.get('center_3d', [0, 0, depth]) if bbox_3d_data else [0, 0, depth],
+                        'dimensions': bbox_3d_data.get('dimensions', [1, 1, 1]) if bbox_3d_data else [1, 1, 1]
+                    }
+                    bboxes_3d.append(bbox_3d)
+                except Exception as e:
+                    print(f"⚠️  3D bbox hesaplama hatası: {e}")
+                    # Fallback: basit 3D bbox
+                    bbox_3d = {
+                        'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2,
+                        'depth': float(depth),
+                        'center_3d': [center_x, center_y, depth],
+                        'dimensions': [x2-x1, y2-y1, 50]  # Varsayılan boyutlar
+                    }
+                    bboxes_3d.append(bbox_3d)
+        
+        return bboxes_3d
+
+    def draw_simple_3d_bbox(self, frame, bbox_3d):
+        """Basit 3D bbox wireframe çizimi"""
+        try:
+            x1, y1, x2, y2 = bbox_3d['x1'], bbox_3d['y1'], bbox_3d['x2'], bbox_3d['y2']
+            depth = bbox_3d['depth']
+            
+            # 3D effect için offset hesapla (depth'e göre)
+            offset_x = int(min(30, max(10, depth * 5)))
+            offset_y = int(min(20, max(8, depth * 3)))
+            
+            # Arka yüz koordinatları
+            x1_back = x1 + offset_x
+            y1_back = y1 - offset_y
+            x2_back = x2 + offset_x
+            y2_back = y2 - offset_y
+            
+            # Arka yüz çiz (mavi)
+            cv2.rectangle(frame, (x1_back, y1_back), (x2_back, y2_back), (255, 0, 0), 2)
+            
+            # Bağlantı çizgileri (3D effect)
+            cv2.line(frame, (x1, y1), (x1_back, y1_back), (0, 255, 255), 2)  # Sol üst
+            cv2.line(frame, (x2, y1), (x2_back, y1_back), (0, 255, 255), 2)  # Sağ üst
+            cv2.line(frame, (x1, y2), (x1_back, y2_back), (0, 255, 255), 2)  # Sol alt
+            cv2.line(frame, (x2, y2), (x2_back, y2_back), (0, 255, 255), 2)  # Sağ alt
+            
+            # Merkez noktası ve derinlik info
+            center_x = int((x1 + x2) / 2)
+            center_y = int((y1 + y2) / 2)
+            cv2.circle(frame, (center_x, center_y), 4, (0, 0, 255), -1)
+            
+            # 3D bilgi
+            cv2.putText(frame, f"3D Box", (x1, y2 + 20), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 0), 1)
+                       
+        except Exception as e:
+            print(f"3D çizim hatası: {e}")
+            pass
+
+    def draw_roi_and_info(self, frame, roi_detections_3d, all_detections_count):
+        """ROI ve bilgi çizimi"""
+        # ROI çiz (kırmızı dikdörtgen)
+        cv2.rectangle(frame, (self.roi_coords[0], self.roi_coords[1]), 
+                     (self.roi_coords[2], self.roi_coords[3]), (0, 0, 255), 3)
+        
+        # ROI bilgisi
+        roi_width = self.roi_coords[2] - self.roi_coords[0]
+        roi_height = self.roi_coords[3] - self.roi_coords[1]
+        cv2.putText(frame, f"ROI: {roi_width}x{roi_height}px", 
+                   (self.roi_coords[0], self.roi_coords[1]-15), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+        
+        # Frame boyutu ve tespit sayısı
+        height, width = frame.shape[:2]
+        cv2.putText(frame, f"Frame: {width}x{height}", 
+                   (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        cv2.putText(frame, f"Total Detections: {all_detections_count}", 
+                   (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        cv2.putText(frame, f"ROI 3D Detections: {len(roi_detections_3d)}", 
+                   (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+        
+        return frame
+
+    def run_detection(self):
+        """Ana tespit döngüsü"""
+        # Webcam bağlantısı
+        cap = cv2.VideoCapture(self.webcam_id)
+        
+        # Webcam ayarları
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        cap.set(cv2.CAP_PROP_FPS, 30)
+        
+        if not cap.isOpened():
+            print(f"❌ Webcam açılamadı! Webcam ID: {self.webcam_id}")
+            return
+        
+        print("📹 Webcam bağlantısı başarılı! 'q' tuşuna basarak çıkabilirsiniz.")
+        print("🎯 3D ROI Detection başlatılıyor...")
+        
+        frame_count = 0
+        skip_frames = 2  # Her 2 frame'de bir AI işlemi (daha smooth)
+        
+        # Son sonuçları sakla
+        last_detections_2d = sv.Detections.empty()
+        last_roi_detections_3d = []
+        
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                print("⚠️  Webcam'den kare alınamadı!")
+                break
+            
+            frame_count += 1
+            
+            # Her skip_frames'de bir AI işlemi yap
+            if frame_count % skip_frames == 0:
+                try:
+                    print(f"🔄 Frame {frame_count} işleniyor...")
+                    
+                    # 1. YOLOE ile 2D tespit
+                    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    pil_image = Image.fromarray(rgb_frame)
+                    results = self.yolo_model.predict(pil_image, conf=0.2, verbose=False)
+                    detections_2d = sv.Detections.from_ultralytics(results[0])
+                    
+                    print(f"   📊 2D Detections: {len(detections_2d)}")
+                    
+                    # 2. Depth estimation
+                    depth_map = self.depth_estimator.estimate_depth(rgb_frame)
+                    print(f"   🔍 Depth map shape: {depth_map.shape}")
+                    
+                    # 3. ROI filtreleme (2D)
+                    roi_detections_2d = self.filter_detections_by_roi(detections_2d, self.roi_coords)
+                    print(f"   🎯 ROI 2D Detections: {len(roi_detections_2d)}")
+                    
+                    # 4. 3D bbox oluşturma (ROI içindekiler için)
+                    roi_detections_3d = self.create_3d_bboxes(roi_detections_2d, depth_map)
+                    print(f"   📦 ROI 3D Detections: {len(roi_detections_3d)}")
+                    
+                    # Sonuçları güncelle
+                    last_detections_2d = detections_2d
+                    last_roi_detections_3d = roi_detections_3d
+                    
+                except Exception as e:
+                    print(f"⚠️  İşleme hatası: {e}")
+                    # Önceki sonuçları kullan
+                    detections_2d = last_detections_2d
+                    roi_detections_3d = last_roi_detections_3d
+            else:
+                # Önceki sonuçları kullan (smooth transition)
+                detections_2d = last_detections_2d
+                roi_detections_3d = last_roi_detections_3d
+            
+            # 5. Görselleştirme (her frame'de)
+            annotated_frame = frame.copy()
+            
+            # Tüm 2D tespitleri gri renkte çiz
+            if len(detections_2d) > 0:
+                for bbox in detections_2d.xyxy:
+                    x1, y1, x2, y2 = map(int, bbox)
+                    cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (128, 128, 128), 2)
+            
+            # ROI içindeki 3D tespitleri çiz
+            for i, bbox_3d in enumerate(roi_detections_3d):
+                # 2D bbox (yeşil)
+                cv2.rectangle(annotated_frame, (bbox_3d['x1'], bbox_3d['y1']), 
+                            (bbox_3d['x2'], bbox_3d['y2']), (0, 255, 0), 3)
+                
+                # Derinlik bilgisi ekle
+                cv2.putText(annotated_frame, f"Depth: {bbox_3d['depth']:.2f}m", 
+                           (bbox_3d['x1'], bbox_3d['y1']-10), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                
+                # 3D wireframe çiz
+                self.draw_simple_3d_bbox(annotated_frame, bbox_3d)
+            
+            # ROI ve bilgi çizimi
+            annotated_frame = self.draw_roi_and_info(annotated_frame, roi_detections_3d, len(detections_2d))
+            
+            # Sonucu göster
+            cv2.imshow('3D ROI Detection - Webcam Test', annotated_frame)
+            
+            # Çıkış kontrolü
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+        
+        cap.release()
+        cv2.destroyAllWindows()
+        print("🎉 Test tamamlandı!")
+
+def main():
+    """Ana fonksiyon - Webcam test"""
+    print("🚀 Webcam ile 3D ROI Detection Test Başlatılıyor...")
+    
+    # Webcam detector oluştur ve çalıştır
+    detector = ROI3DDetectorWebcam(webcam_id=0)
+    detector.run_detection()
+
+if __name__ == "__main__":
+    main()
