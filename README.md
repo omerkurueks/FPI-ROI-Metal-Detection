@@ -1,247 +1,185 @@
-﻿# FPI ROI Metal Detection
+# FPI ROI Metal Detection - 3D Enhanced System
 
-Bu proje, IP kameralardan RTSP protokolü ile canlı görüntü alarak, belirlenen ROI (Region of Interest) alanında metal ve diğer nesnelerin tespitini yapmaktadır.
+Advanced ROI-based metal detection system with **3D visualization capabilities** for IP cameras and webcams.
 
-## Özellikler
+## 🚀 Features
 
-- **RTSP IP Kamera Desteği**: IP kameralardan canlı görüntü alma
-- **ROI Tabanlı Tespit**: Belirli alan içerisinde nesne tespiti
-- **YOLOE Modeli**: Text-guided object detection
-- **CUDA Desteği**: GPU ile hızlandırılmış işlem
-- **Gerçek Zamanlı Görselleştirme**: Canlı tespit sonuçları
+### Core Detection
+- **YOLOE (YOLO with Embeddings)**: Text-guided object detection
+- **ROI-based filtering**: Focused detection within defined regions
+- **Real-time processing**: Optimized for live camera feeds
+- **Multi-camera support**: RTSP IP cameras and USB webcams
 
-## Tespit Edilen Nesneler
+### 3D Capabilities ✨
+- **Monocular depth estimation**: Using Depth Anything v2 model
+- **3D bounding boxes**: Real-time 3D visualization
+- **Wireframe rendering**: Perspective-based 3D wireframes
+- **Depth information**: Distance measurements for detected objects
 
-### Metal Nesneler
-- Metal bar, steel bar, iron bar
-- Metal block, steel beam, iron beam
-- Metal piece, industrial part, steel product
+### Performance Optimizations
+- **CUDA acceleration**: GPU-accelerated inference
+- **Smooth transitions**: Optimized frame processing (2-frame skipping)
+- **Result caching**: Seamless visual experience
+- **Background processing**: Non-blocking AI operations
 
-### Günlük Eşyalar
-- Hand (el)
-- Pen, pencil (kalem)
-- Notebook, book (defter, kitap)
-- Cup, mug, glass (bardak, kupa)
-- Bottle, water bottle (şişe)
-
-## Kurulum
-
-1. **Gerekli kütüphaneleri yükleyin:**
-```bash
-pip install -r requirements.txt
-```
-
-2. **Model dosyalarını indirin:**
-- `yoloe-v8l-seg.pt`
-- `mobileclip_blt.pt`
-
-## Kullanım
-
-### Statik Görüntü Analizi
-```bash
-cd src
-python main.py
-```
-
-### Canlı Kamera Analizi
-```bash
-cd src
-python cam.py
-```
-
-## Dosya Yapısı
+## 📁 Project Structure
 
 ```
 FPI-ROI-Metal-Detection/
 ├── src/
-│   ├── main.py          # Statik görüntü analizi
-│   └── cam.py           # Canlı kamera analizi
-├── data/
-│   └── fpi.jpeg         # Test görüntüsü
-├── output/              # Sonuç dosyaları
-├── models/              # Model dosyaları
-├── requirements.txt     # Python bağımlılıkları
-└── README.md           # Bu dosya
+│   ├── main.py              # Static image analysis
+│   ├── cam_3d.py           # 3D RTSP camera detection
+│   ├── test_webcam_3d.py   # 3D webcam testing
+│   ├── depth_model.py      # Depth estimation module
+│   ├── bbox3d_utils.py     # 3D bbox utilities
+│   └── load_camera_params.py # Camera calibration
+├── models/                  # AI model files
+├── data/                   # Sample images
+├── output/                 # Detection results
+└── requirements.txt        # Dependencies
 ```
 
-## Konfigürasyon
+## 🔧 Installation
 
-### ROI Koordinatları
-`src/cam.py` ve `src/main.py` dosyalarında ROI koordinatlarını değiştirebilirsiniz:
-```python
-FIXED_ROI = [235, 1010, 780, 1241]  # [x1, y1, x2, y2]
+1. **Clone the repository:**
+```bash
+git clone https://github.com/omerkurueks/FPI-ROI-Metal-Detection.git
+cd FPI-ROI-Metal-Detection
 ```
 
-### RTSP Kamera Adresi
-`src/cam.py` dosyasında RTSP adresini güncelleyin:
-```python
-rtsp_url = "rtsp://kullanici:sifre@ip:port/stream"
-```
-
-## Gereksinimler
-
-- Python 3.8+
-- CUDA (opsiyonel, GPU desteği için)
-- IP kamera (RTSP desteği ile)
-
-## Lisans
-
-Bu proje MIT lisansı altında lisanslanmıştır.
-
-## Katkıda Bulunma
-
-1. Bu repository'yi fork edin
-2. Feature branch oluşturun (`git checkout -b feature/AmazingFeature`)
-3. Değişikliklerinizi commit edin (`git commit -m 'Add some AmazingFeature'`)
-4. Branch'inizi push edin (`git push origin feature/AmazingFeature`)
-5. Pull Request oluşturun
-
-## İletişim
-
-Proje Sahibi - [@OmerKuru](https://github.com/OmerKuru)
-
-Proje Linki: [https://github.com/OmerKuru/FPI-ROI-Metal-Detection](https://github.com/OmerKuru/FPI-ROI-Metal-Detection)
-
-Fabrika ortamında üretilen dikdörtgen prizma demir parçalarını belirli bir ROI (Region of Interest) alanında tespit etmek için geliştirilmiş AI tabanlı sistem.
-
-##  Özellikler
-
-- **CUDA Destekli GPU Hızlandırması**: RTX/GTX serisi GPU'larda optimize edilmiş performans
-- **Zero-Shot Segmentasyon**: YOLOE modeli ile metin tabanlı nesne tespiti
-- **Sabit ROI Sistemi**: Önceden tanımlanmış alanda hassas tespit
-- **Detaylı Raporlama**: Görsel ve metin tabanlı sonuç analizi
-- **Endüstriyel Kullanım**: Fabrika ortamı için optimize edilmiş
-
-##  Proje Yapısı
-
-```
-FPI-ROI-Metal-Detection/
- src/                    # Kaynak kodları
-    main.py            # Ana tespit sistemi
- data/                  # Görüntü dosyaları
-    fpi.jpeg          # Test görüntüsü
- models/               # AI model dosyaları (otomatik indirilir)
- output/               # Sonuç görüntüleri ve raporlar
- docs/                 # Dokümantasyon
- requirements.txt      # Python paket gereksinimleri
- README.md            # Bu dosya
-```
-
-##  Kurulum
-
-### 1. Gereksinimler
-- Python 3.8+
-- CUDA destekli GPU (önerilen)
-- 8GB+ RAM
-
-### 2. Bağımlılıkları Yükleyin
+2. **Install dependencies:**
 ```bash
 pip install -r requirements.txt
 ```
 
-### 3. Test Görüntüsünü Ekleyin
-`fpi.jpeg` dosyasını `data/` klasörüne koyun.
+3. **Download model files:**
+   - Place `yoloe-v8l-seg.pt` in `models/` directory
+   - Place `mobileclip_blt.pt` in project root
 
-##  Kullanım
+## 🎯 Usage
 
-### Basit Kullanım
+### 3D RTSP Camera Detection
+```bash
+python src/cam_3d.py
+```
+- Connects to IP camera via RTSP
+- Real-time 3D object detection
+- ROI filtering and visualization
+
+### 3D Webcam Testing
+```bash
+python src/test_webcam_3d.py
+```
+- Uses local webcam for testing
+- 3D wireframe visualization
+- Performance monitoring
+
+### Static Image Analysis
 ```bash
 python src/main.py
 ```
+- Analyze single images
+- ROI-based detection
+- Save results to output/
 
-### Python Kodu
+## 📊 System Requirements
+
+- **GPU**: NVIDIA GPU with CUDA support (recommended)
+- **RAM**: 8GB+ (16GB recommended for smooth operation)
+- **Python**: 3.8+
+- **OS**: Windows/Linux/macOS
+
+## 🔍 Detection Process
+
+1. **2D Object Detection**: YOLOE identifies objects in frame
+2. **ROI Filtering**: Filter detections within defined region
+3. **Depth Estimation**: Calculate depth map using Depth Anything v2
+4. **3D Bbox Creation**: Generate 3D bounding boxes with depth info
+5. **Visualization**: Render wireframes and depth information
+
+## 🎨 Visualization Features
+
+- **2D Bboxes**: Green rectangles for standard detections
+- **3D Wireframes**: Blue perspective frames with yellow connections
+- **Depth Info**: Distance measurements in meters
+- **ROI Boundaries**: Red rectangle showing detection zone
+- **Smooth Transitions**: Optimized frame processing for fluid visualization
+
+## ⚙️ Configuration
+
+### Camera Settings (cam_3d.py)
 ```python
-from src.main import FPIMetalDetector
-
-# Sistem oluştur
-detector = FPIMetalDetector()
-
-# ROI koordinatlarını özelleştir (isteğe bağlı)
-detector.roi = [235, 1010, 780, 1241]  # [x1, y1, x2, y2]
-
-# Tespit yap
-result = detector.detect("data/fpi.jpeg")
-
-# Raporu yazdır
-detector.print_report(result)
+rtsp_url = "rtsp://admin:password@192.168.1.100"
+roi_coords = [200, 150, 600, 450]  # [x1, y1, x2, y2]
 ```
 
-##  Yapılandırma
-
-### ROI Koordinatlarını Değiştirme
-`src/main.py` dosyasında `FPIMetalDetector` sınıfında:
+### Performance Tuning
 ```python
-self.roi = [x1, y1, x2, y2]  # Yeni koordinatlar
+skip_frames = 2  # Process every 2nd frame
+confidence = 0.2  # Detection confidence threshold
 ```
 
-### Tespit Parametreleri
-```python
-detector = FPIMetalDetector(
-    roi_coordinates=[235, 1010, 780, 1241],
-    confidence_threshold=0.1
-)
-```
+## 🔬 Technical Details
 
-##  Çıktı Formatı
+### Models Used
+- **YOLOE**: YOLOv8-based with embedding support
+- **Depth Anything v2**: Transformer-based depth estimation
+- **MobileClip**: Efficient CLIP model for text-image matching
 
-### Görsel Sonuç
--  Kırmızı dikdörtgen: ROI alanı
--  Yeşil kutular: ROI içerisindeki metal nesneler
--  Gri kutular: ROI dışındaki tespitler
+### Processing Pipeline
+1. Frame capture (RTSP/Webcam)
+2. YOLOE inference on GPU
+3. Depth map generation
+4. ROI intersection calculation
+5. 3D bbox estimation
+6. Wireframe rendering
+7. Display with smooth transitions
 
-### Konsol Raporu
-```
- FPI METAL TESPİT RAPORU
-============================================================
- Görüntü: fpi.jpeg
- ROI: [235, 1010, 780, 1241]
- ROI Boyutu: 545x231 piksel
- Toplam metal: 4
- ROI içerisinde: 1
-```
+## 🐛 Troubleshooting
 
-##  Teknik Detaylar
+### Common Issues
+- **CUDA not available**: Install CUDA-compatible PyTorch
+- **Model files missing**: Download required .pt files
+- **RTSP connection failed**: Check camera IP and credentials
+- **Low performance**: Reduce frame resolution or increase skip_frames
 
-### AI Modeli
-- **YOLOE**: Zero-shot object detection
-- **MobileCLIP**: Text-to-image understanding
-- **Backbone**: Vision Transformer
+### Performance Tips
+- Use GPU acceleration when available
+- Adjust ROI size for optimal detection
+- Monitor system resources during operation
+- Close unnecessary applications for better performance
 
-### Desteklenen Metal Türleri
-- Metal bar, Steel bar, Iron bar
-- Rectangular prism, Metal block
-- Steel beam, Iron beam
-- Industrial part, Steel product
+## 📈 Future Enhancements
 
-##  Sorun Giderme
+- [ ] Multi-object tracking in 3D space
+- [ ] Advanced depth filtering algorithms
+- [ ] Web interface for remote monitoring
+- [ ] Alert system integration
+- [ ] Historical data logging
+- [ ] Mobile app companion
 
-### CUDA Hatası
-```bash
-# CPU modunda çalıştırın
-export CUDA_VISIBLE_DEVICES=""
-python src/main.py
-```
+## 🤝 Contributing
 
-### Model İndirme Sorunu
-Model dosyaları otomatik olarak HuggingFace'den indirilir. İnternet bağlantınızı kontrol edin.
+1. Fork the repository
+2. Create feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit changes (`git commit -m 'Add amazing feature'`)
+4. Push to branch (`git push origin feature/amazing-feature`)
+5. Open Pull Request
 
-### Bellek Hatası
-Görüntü boyutunu küçültün veya batch size'ı azaltın.
+## 📄 License
 
-##  Performans
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-- **GPU (RTX 3060)**: ~2-3 saniye/görüntü
-- **CPU**: ~10-15 saniye/görüntü
-- **Bellek Kullanımı**: ~2GB VRAM, ~4GB RAM
+## 🙏 Acknowledgments
 
-##  Lisans
+- **YOLO**: Ultralytics YOLOv8 framework
+- **Depth Anything v2**: Advanced monocular depth estimation
+- **OpenCV**: Computer vision operations
+- **PyTorch**: Deep learning framework
+- **Transformers**: Hugging Face model library
 
-Bu proje Ar-Ge amaçlı geliştirilmiştir.
+---
 
-##  Katkıda Bulunanlar
-
-- [@OmerKuru] - Ana geliştirici
-
-##  İletişim
-
-Proje hakkında sorularınız için issue açabilirsiniz.
+**Created by**: Ömer Kuru  
+**Project**: FPI ROI Metal Detection System  
+**Version**: 2.0 (3D Enhanced)
