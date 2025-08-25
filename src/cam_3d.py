@@ -76,37 +76,92 @@ class ROI3DDetector:
             return sv.Detections.empty()
 
     def create_3d_bboxes(self, detections_2d, depth_map):
-        """2D tespitlerden 3D bounding box'lar oluştur"""
+        """2D tespitlerden 3D bounding box'lar oluştur - gelişmiş derinlik hesaplama"""
         bboxes_3d = []
+        
+        # Depth map istatistikleri
+        depth_min, depth_max = np.min(depth_map), np.max(depth_map)
+        depth_range = depth_max - depth_min
         
         for i, bbox_2d in enumerate(detections_2d.xyxy):
             x1, y1, x2, y2 = map(int, bbox_2d)
             
-            # Bbox merkezindeki derinlik değerini al
+            # Bbox merkezi
             center_x = int((x1 + x2) / 2)
             center_y = int((y1 + y2) / 2)
             
-            # Depth map'ten derinlik değerini oku
-            if 0 <= center_y < depth_map.shape[0] and 0 <= center_x < depth_map.shape[1]:
-                depth = depth_map[center_y, center_x]
+            # ROI içindeki derinlik analizi
+            roi_depth = depth_map[y1:y2, x1:x2]
+            
+            # Çoklu derinlik ölçümü
+            center_depth = depth_map[center_y, center_x]
+            mean_depth = np.mean(roi_depth)
+            min_depth = np.min(roi_depth)
+            max_depth = np.max(roi_depth)
+            depth_variance = np.std(roi_depth)
+            
+            # Gerçek mesafe hesaplama (kamera pozisyonuna göre)
+            image_height, image_width = depth_map.shape
+            
+            # Y pozisyonuna göre mesafe tahmini (perspektif düzeltme)
+            y_ratio = center_y / image_height
+            
+            # Kamera yüksekliği 2.5m, açı 15 derece varsayımı
+            if y_ratio < 0.3:  # Üst kısım (uzak)
+                base_distance = 3.0 + (0.3 - y_ratio) * 5.0  # 3-4.5m
+            elif y_ratio < 0.7:  # Orta kısım
+                base_distance = 1.5 + (0.7 - y_ratio) * 3.75  # 1.5-3m  
+            else:  # Alt kısım (yakın)
+                base_distance = 0.5 + (0.7 - y_ratio) * (-3.33)  # 0.5-1.5m
+            
+            # Derinlik map değeri ile ince ayar
+            depth_normalized = (center_depth - depth_min) / (depth_range + 1e-6)
+            depth_modifier = 0.7 + (depth_normalized * 0.6)  # 0.7-1.3 arası
+            
+            real_distance = base_distance * depth_modifier
+            
+            # Nesne boyutu hesaplama (pixel to meter)
+            pixel_width = x2 - x1
+            pixel_height = y2 - y1
+            
+            # Mesafeye bağlı ölçek faktörü
+            scale_factor = real_distance / 1000  # 1m'de 1000 pixel varsayımı
+            
+            real_width = pixel_width * scale_factor
+            real_height = pixel_height * scale_factor
+            real_depth_est = max(real_width, real_height) * 0.5  # Tahmini derinlik
+            
+            # 3D bbox tahmin et
+            bbox_3d_data = self.bbox_3d_estimator.estimate_3d_box(
+                bbox_2d=[x1, y1, x2, y2],
+                depth_value=float(real_distance),
+                class_name='object',
+                object_id=i
+            )
+            
+            if bbox_3d_data is not None:
+                # Gelişmiş 3D data yapısı
+                bbox_3d = {
+                    'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2,
+                    'depth': float(real_distance),
+                    'depth_raw': float(center_depth),
+                    'depth_stats': {
+                        'mean': float(mean_depth),
+                        'variance': float(depth_variance),
+                        'range': float(max_depth - min_depth)
+                    },
+                    'real_size': {
+                        'width_cm': real_width * 100,
+                        'height_cm': real_height * 100,
+                        'depth_cm': real_depth_est * 100
+                    },
+                    'center_3d': bbox_3d_data.get('center_3d', [0, 0, real_distance]),
+                    'dimensions': [real_width, real_height, real_depth_est]
+                }
+                bboxes_3d.append(bbox_3d)
                 
-                # 3D bbox tahmin et
-                bbox_3d_data = self.bbox_3d_estimator.estimate_3d_box(
-                    bbox_2d=[x1, y1, x2, y2],
-                    depth_value=float(depth),
-                    class_name='object',  # Genel class name
-                    object_id=i
-                )
-                
-                if bbox_3d_data is not None:
-                    # Basit 3D data yapısı oluştur
-                    bbox_3d = {
-                        'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2,
-                        'depth': float(depth),
-                        'center_3d': bbox_3d_data.get('center_3d', [0, 0, depth]),
-                        'dimensions': bbox_3d_data.get('dimensions', [1, 1, 1])
-                    }
-                    bboxes_3d.append(bbox_3d)
+                # Debug çıktısı
+                print(f"       📏 Nesne {i}: {real_distance:.2f}m, boyut: {real_width*100:.1f}x{real_height*100:.1f}cm")
         
         return bboxes_3d
 
@@ -267,10 +322,27 @@ class ROI3DDetector:
                 cv2.rectangle(annotated_frame, (bbox_3d['x1'], bbox_3d['y1']), 
                             (bbox_3d['x2'], bbox_3d['y2']), (0, 255, 0), 3)
                 
-                # Derinlik bilgisi ekle
-                cv2.putText(annotated_frame, f"Depth: {bbox_3d['depth']:.2f}m", 
-                           (bbox_3d['x1'], bbox_3d['y1']-10), 
+                # Gelişmiş bilgi gösterimi
+                depth = bbox_3d['depth']
+                width_cm = bbox_3d['real_size']['width_cm']
+                height_cm = bbox_3d['real_size']['height_cm']
+                depth_variance = bbox_3d['depth_stats']['variance']
+                
+                # Mesafe bilgisi
+                cv2.putText(annotated_frame, f"Mesafe: {depth:.2f}m", 
+                           (bbox_3d['x1'], bbox_3d['y1']-35), 
                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                
+                # Boyut bilgisi
+                cv2.putText(annotated_frame, f"Boyut: {width_cm:.1f}x{height_cm:.1f}cm", 
+                           (bbox_3d['x1'], bbox_3d['y1']-15), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
+                
+                # Derinlik kalitesi
+                quality = "Yüksek" if depth_variance < 0.02 else "Düşük"
+                cv2.putText(annotated_frame, f"Kalite: {quality}", 
+                           (bbox_3d['x1'], bbox_3d['y1']+bbox_3d['y2']-bbox_3d['y1']+15), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 0), 1)
                 
                 # 3D wireframe çiz (basit implementasyon)
                 self.draw_simple_3d_bbox(annotated_frame, bbox_3d)
