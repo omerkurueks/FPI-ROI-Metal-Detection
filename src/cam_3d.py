@@ -11,8 +11,8 @@ import os
 from depth_model import DepthEstimator
 from bbox3d_utils import BBox3DEstimator
 
-# Sabit ROI koordinatları (main.py ile aynı olmalı)
-FIXED_ROI = [235, 1010, 780, 1241]  # [x1, y1, x2, y2]
+# Sabit ROI koordinatları (1920x1080 için merkezi ROI)
+FIXED_ROI = [400, 200, 1520, 880]  # [x1, y1, x2, y2] - merkezi büyük ROI
 NAMES = [
     "metal bar", "steel bar", "iron bar", "rectangular prism", "metal block",
     "steel beam", "iron beam", "metal piece", "industrial part", "steel product",
@@ -55,13 +55,20 @@ class ROI3DDetector:
         x1_roi, y1_roi, x2_roi, y2_roi = roi_bbox
         filtered_indices = []
         
+        print(f"   🔍 ROI: [{x1_roi}, {y1_roi}, {x2_roi}, {y2_roi}]")
+        
         for i, bbox in enumerate(detections.xyxy):
             x1, y1, x2, y2 = bbox
             center_x = (x1 + x2) / 2
             center_y = (y1 + y2) / 2
             
+            print(f"   📍 Detection {i}: center=({center_x:.0f}, {center_y:.0f}), bbox=[{x1:.0f}, {y1:.0f}, {x2:.0f}, {y2:.0f}]")
+            
             if x1_roi <= center_x <= x2_roi and y1_roi <= center_y <= y2_roi:
                 filtered_indices.append(i)
+                print(f"       ✅ ROI içinde!")
+            else:
+                print(f"       ❌ ROI dışında")
         
         if filtered_indices:
             return detections[filtered_indices]
@@ -209,20 +216,27 @@ class ROI3DDetector:
             # Her skip_frames'de bir AI işlemi yap
             if frame_count % skip_frames == 0:
                 try:
+                    print(f"🔄 Frame {frame_count} işleniyor...")
+                    
                     # 1. YOLOE ile 2D tespit
                     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     pil_image = Image.fromarray(rgb_frame)
                     results = self.yolo_model.predict(pil_image, conf=0.15, verbose=False)
                     detections_2d = sv.Detections.from_ultralytics(results[0])
                     
+                    print(f"   📊 2D Detections: {len(detections_2d)}")
+                    
                     # 2. Depth estimation
                     depth_map = self.depth_estimator.estimate_depth(rgb_frame)
+                    print(f"   🔍 Depth map shape: {depth_map.shape}")
                     
                     # 3. ROI filtreleme (2D)
                     roi_detections_2d = self.filter_detections_by_roi(detections_2d, self.roi_coords)
+                    print(f"   🎯 ROI 2D Detections: {len(roi_detections_2d)}")
                     
                     # 4. 3D bbox oluşturma (ROI içindekiler için)
                     roi_detections_3d = self.create_3d_bboxes(roi_detections_2d, depth_map)
+                    print(f"   📦 ROI 3D Detections: {len(roi_detections_3d)}")
                     
                     # Sonuçları güncelle
                     last_detections_2d = detections_2d

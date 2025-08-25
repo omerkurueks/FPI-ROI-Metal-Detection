@@ -49,7 +49,7 @@ def main():
     model.set_classes(NAMES, model.get_text_pe(NAMES))
 
     # RTSP adresini kullanıcıdan al
-    rtsp_url = "rtsp://admin:HeysemAI246@169.254.4.56"
+    rtsp_url = "rtsp://admin:HeysemAI246@192.168.150.59"
     cap = cv2.VideoCapture(rtsp_url)
     
     # RTSP performans ayarları
